@@ -167,7 +167,7 @@ public class World : IXmlSerializable
                 tiles[x, y].Room = GetOutsideRoom(); // Rooms 0 is always going to be outside, and that is our default room
             }
         }
-        new NeedActions ();
+
         CreateFurniturePrototypes();
         CreateNeedPrototypes ();
         CreateInventoryPrototypes();
@@ -1070,12 +1070,14 @@ public class World : IXmlSerializable
                     float g = float.Parse(reader.GetAttribute("g"));;
                     Color color = new Color(r, g, b, 1.0f);
                     Character c = CreateCharacter(tiles[x, y], color);
+                    c.name = reader.GetAttribute("name");
                     c.ReadXml(reader);
                 }
 
                 else
                 {
                     Character c = CreateCharacter(tiles[x, y]);
+                    c.name = reader.GetAttribute("name");
                     c.ReadXml(reader);
                 }
                 
