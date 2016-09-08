@@ -10,10 +10,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using MoonSharp.Interpreter;
+using ProjectPorcupine.Localization;
 using UnityEngine;
 
 [MoonSharpUserData]
-public class Job
+public class Job : ISelectable
 {
     // This class holds info for a queued up job, which can include
     // things like placing furniture, moving stored inventory,
@@ -71,7 +72,7 @@ public class Job
         {
             foreach (Inventory inv in inventoryRequirements)
             {
-                this.inventoryRequirements[inv.objectType] = inv.Clone();
+                this.inventoryRequirements[inv.ObjectType] = inv.Clone();
             }
         }
     }
@@ -95,7 +96,7 @@ public class Job
         {
             foreach (Inventory inv in inventoryRequirements)
             {
-                this.inventoryRequirements[inv.objectType] = inv.Clone();
+                this.inventoryRequirements[inv.ObjectType] = inv.Clone();
             }
         }
     }
@@ -120,7 +121,7 @@ public class Job
         {
             foreach (Inventory inv in other.inventoryRequirements.Values)
             {
-                this.inventoryRequirements[inv.objectType] = inv.Clone();
+                this.inventoryRequirements[inv.ObjectType] = inv.Clone();
             }
         }
     }
@@ -178,6 +179,11 @@ public class Job
         protected set;
     }
 
+    public bool IsSelected
+    {
+        get; set;
+    }
+
     public Inventory[] GetInventoryRequirementValues()
     {
         return inventoryRequirements.Values.ToArray();
@@ -221,7 +227,7 @@ public class Job
         {
             foreach (string luaFunction in jobWorkedLua.ToList())
             {
-                LuaUtilities.CallFunction(luaFunction, this);
+                FunctionsManager.Furniture.Call(luaFunction, this);
             }
         }
 
@@ -229,7 +235,6 @@ public class Job
         // If not, don't register the work time.
         if (MaterialNeedsMet() == false)
         {
-            ////Debug.LogError("Tried to do work on a job that doesn't have all the material.");
             return;
         }
 
@@ -245,7 +250,7 @@ public class Job
 
             foreach (string luaFunction in jobCompletedLua.ToList())
             {
-                LuaUtilities.CallFunction(luaFunction, this);
+                FunctionsManager.Furniture.Call(luaFunction, this);
             }
             
             if (jobRepeats == false)
@@ -300,7 +305,7 @@ public class Job
 
         foreach (Inventory inv in inventoryRequirements.Values)
         {
-            if (inv.maxStackSize > inv.StackSize)
+            if (inv.MaxStackSize > inv.StackSize)
             {
                 return false;
             }
@@ -329,26 +334,58 @@ public class Job
             return 0;
         }
 
-        if (inventoryRequirements[objectType].StackSize >= inventoryRequirements[objectType].maxStackSize)
+        if (inventoryRequirements[objectType].StackSize >= inventoryRequirements[objectType].MaxStackSize)
         {
             // We already have all that we need!
             return 0;
         }
 
         // The inventory is of a type we want, and we still need more.
-        return inventoryRequirements[objectType].maxStackSize - inventoryRequirements[objectType].StackSize;
+        return inventoryRequirements[objectType].MaxStackSize - inventoryRequirements[objectType].StackSize;
     }
 
     public int AmountDesiredOfInventoryType(Inventory inv)
     {
-        return AmountDesiredOfInventoryType(inv.objectType);
+        return AmountDesiredOfInventoryType(inv.ObjectType);
+    }
+
+    /// <summary>
+    /// Fulfillable inventory requirements for job.
+    /// </summary>
+    /// <returns>A list of (string) objectTypes for job inventory requirements that can be met. Returns null if the job requires materials which do not exist on the map.</returns>
+    public List<string> FulfillableInventoryRequirements()
+    {
+        List<string> fulfillableInventoryRequirements = new List<string>();
+
+        foreach (Inventory inv in this.GetInventoryRequirementValues())
+        {
+            if (this.acceptsAny == false)
+            {
+                if (World.Current.inventoryManager.QuickCheck(inv.ObjectType) == false)
+                {
+                    // the job requires ALL inventory requirements to be met, and there is no source of a desired objectType
+                    return null;
+                }
+                else
+                {
+                    fulfillableInventoryRequirements.Add(inv.ObjectType);
+                }
+            }
+            else if (World.Current.inventoryManager.QuickCheck(inv.ObjectType))
+            {
+                // there is a source for a desired objectType that the job will accept
+                fulfillableInventoryRequirements.Add(inv.ObjectType);
+            }
+        }
+
+        return fulfillableInventoryRequirements;
     }
 
     public Inventory GetFirstDesiredInventory()
     {
         foreach (Inventory inv in inventoryRequirements.Values)
         {
-            if (inv.maxStackSize > inv.StackSize)
+            if (inv.MaxStackSize > inv.StackSize)
             {
                 return inv;
             }
@@ -361,5 +398,31 @@ public class Job
     {
         // TODO: This casting to and from enums are a bit wierd. We should decide on ONE priority system.
         this.Priority = (Job.JobPriority)Mathf.Min((int)Job.JobPriority.Low, (int)Priority + 1);
+    }
+
+    public string GetName()
+    {
+        return LocalizationTable.GetLocalization(JobObjectType);
+    }
+
+    public string GetDescription()
+    {
+        string description = "Requirements:\n\t";
+        foreach (KeyValuePair<string, Inventory> inv in inventoryRequirements)
+        {
+            description += inv.Value.StackSize + "/" + inv.Value.MaxStackSize + "\n\t";
+        }
+
+        return description;
+    }
+
+    public string GetHitPointString()
+    {
+        return string.Empty;
+    }
+
+    public string GetJobDescription()
+    {
+        return GetDescription();
     }
 }

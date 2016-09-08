@@ -26,6 +26,11 @@ public static class ModUtils
         return Mathf.FloorToInt(value);
     }
 
+    public static float Round(float value, int digits)
+    {
+        return (float)System.Math.Round((double)value, digits);
+    }
+
     public static void Log(object obj) 
     {
         Debug.Log(obj);
@@ -69,5 +74,10 @@ public static class ModUtils
     public static void ULogError(string message)
     {
         Debug.ULogErrorChannel(defaultLogChannel, message);
+    }
+
+    public static float Clamp(float value, float min, float max)
+    {
+        return value.Clamp(min, max);
     }
 }

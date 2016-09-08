@@ -9,28 +9,67 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class JobSpriteController
+public class JobSpriteController : BaseSpriteController<Job>
 {
     // This bare-bones controller is mostly just going to piggyback
     // on FurnitureSpriteController because we don't yet fully know
     // what our job system is going to look like in the end.
     private FurnitureSpriteController fsc;
-    private Dictionary<Job, GameObject> jobGameObjectMap;
-    private World world;
-    private GameObject jobParent;
 
     // Use this for initialization
-    public JobSpriteController(World currentWorld, FurnitureSpriteController furnitureSpriteController)
+    public JobSpriteController(World world, FurnitureSpriteController furnitureSpriteController) : base(world, "Jobs")
     {
-        world = currentWorld;
-        jobGameObjectMap = new Dictionary<Job, GameObject>();
-
         fsc = furnitureSpriteController;
-        world.jobQueue.OnJobCreated += OnJobCreated;
-        jobParent = new GameObject("Jobs");
+        world.jobQueue.OnJobCreated += OnCreated;
+
+        foreach (Job job in world.jobQueue.PeekJobs())
+        {
+            OnCreated(job);
+        }
+
+        foreach (Job job in world.jobWaitingQueue.PeekJobs())
+        {
+            OnCreated(job);
+        }
+
+        foreach (Character character in world.characters)
+        {
+            if (character.MyJob != null)
+            {
+                OnCreated(character.MyJob);
+            }
+        }
     }
 
-    private void OnJobCreated(Job job)
+    public override void RemoveAll()
+    {
+        world.jobQueue.OnJobCreated -= OnCreated;
+
+        foreach (Job job in world.jobQueue.PeekJobs())
+        {
+            job.OnJobCompleted -= OnRemoved;
+            job.OnJobStopped -= OnRemoved;
+        }
+
+        foreach (Job job in world.jobWaitingQueue.PeekJobs())
+        {
+            job.OnJobCompleted -= OnRemoved;
+            job.OnJobStopped -= OnRemoved;
+        }
+
+        foreach (Character character in world.characters)
+        {
+            if (character.MyJob != null)
+            {
+                character.MyJob.OnJobCompleted -= OnRemoved;
+                character.MyJob.OnJobStopped -= OnRemoved;
+            }
+        }
+
+        base.RemoveAll();
+    }
+
+    protected override void OnCreated(Job job)
     {
         if (job.JobObjectType == null && job.JobTileType == null)
         {
@@ -40,7 +79,7 @@ public class JobSpriteController
 
         // FIXME: We can only do furniture-building jobs.
         // TODO: Sprite
-        if (jobGameObjectMap.ContainsKey(job))
+        if (objectGameObjectMap.ContainsKey(job))
         {
             return;
         }
@@ -48,10 +87,10 @@ public class JobSpriteController
         GameObject job_go = new GameObject();
 
         // Add our tile/GO pair to the dictionary.
-        jobGameObjectMap.Add(job, job_go);
+        objectGameObjectMap.Add(job, job_go);
 
-        job_go.name = "JOB_" + job.JobObjectType + "_" + job.tile.X + "_" + job.tile.Y;
-        job_go.transform.SetParent(jobParent.transform, true);
+        job_go.name = "JOB_" + job.JobObjectType + "_" + job.tile.X + "_" + job.tile.Y + "_" + job.tile.Z;
+        job_go.transform.SetParent(objectParent.transform, true);
 
         SpriteRenderer sr = job_go.AddComponent<SpriteRenderer>();
         if (job.JobTileType != null)
@@ -59,13 +98,13 @@ public class JobSpriteController
             // This job is for building a tile.
             // For now, the only tile that could be is the floor, so just show a floor sprite
             // until the graphics system for tiles is fleshed out further.
-            job_go.transform.position = new Vector3(job.tile.X, job.tile.Y, 0);
+            job_go.transform.position = new Vector3(job.tile.X, job.tile.Y, job.tile.Z);
             sr.sprite = SpriteManager.current.GetSprite("Tile", "Solid");
         }
         else
         {
             // This is a normal furniture job.
-            job_go.transform.position = new Vector3(job.tile.X + ((job.furniturePrototype.Width - 1) / 2f), job.tile.Y + ((job.furniturePrototype.Height - 1) / 2f), 0);
+            job_go.transform.position = new Vector3(job.tile.X + ((job.furniturePrototype.Width - 1) / 2f), job.tile.Y + ((job.furniturePrototype.Height - 1) / 2f), job.tile.Z);
             sr.sprite = fsc.GetSpriteForFurniture(job.JobObjectType);
         }
 
@@ -78,8 +117,8 @@ public class JobSpriteController
             // By default, the door graphic is meant for walls to the east & west
             // Check to see if we actually have a wall north/south, and if so
             // then rotate this GO by 90 degrees
-            Tile northTile = world.GetTileAt(job.tile.X, job.tile.Y + 1);
-            Tile southTile = world.GetTileAt(job.tile.X, job.tile.Y - 1);
+            Tile northTile = world.GetTileAt(job.tile.X, job.tile.Y + 1, job.tile.Z);
+            Tile southTile = world.GetTileAt(job.tile.X, job.tile.Y - 1, job.tile.Z);
 
             if (northTile != null && southTile != null && northTile.Furniture != null && southTile.Furniture != null &&
             northTile.Furniture.ObjectType.Contains("Wall") && southTile.Furniture.ObjectType.Contains("Wall"))
@@ -87,20 +126,23 @@ public class JobSpriteController
                 job_go.transform.rotation = Quaternion.Euler(0, 0, 90);
             }
         }
-
-        job.OnJobCompleted += OnJobEnded;
-        job.OnJobStopped += OnJobEnded;
+            
+        job.OnJobCompleted += OnRemoved;
+        job.OnJobStopped += OnRemoved;
     }
 
-    private void OnJobEnded(Job job)
+    protected override void OnChanged(Job job) 
+    { 
+    }
+
+    protected override void OnRemoved(Job job)
     {
         // This executes whether a job was COMPLETED or CANCELLED
-        // FIXME: We can only do furniture-building jobs.
-        GameObject job_go = jobGameObjectMap[job];
+        job.OnJobCompleted -= OnRemoved;
+        job.OnJobStopped -= OnRemoved;
 
-        job.OnJobCompleted -= OnJobEnded;
-        job.OnJobStopped -= OnJobEnded;
-
+        GameObject job_go = objectGameObjectMap[job];
+        objectGameObjectMap.Remove(job);
         GameObject.Destroy(job_go);
     }
 }

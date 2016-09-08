@@ -22,6 +22,25 @@ public class ConstructionMenu : MonoBehaviour
 
     private BuildModeController bmc;
 
+    private GameObject[] furnitureSubs;
+
+    private GameObject[] FurnitureSubs
+    {
+        get
+        {
+            if (furnitureSubs == null)
+            {
+                furnitureSubs = new GameObject[]
+                {
+                    // add every furniture submenu here
+                    furnitureMenu, floorMenu
+                };
+            }
+
+            return furnitureSubs;
+        }
+    }
+
     public void OnClickDeconstruct()
     {
         DeactivateSubs();
@@ -30,19 +49,20 @@ public class ConstructionMenu : MonoBehaviour
 
     public void OnClickFloors()
     {
-        furnitureMenu.SetActive(false);
+        DeactivateSubsExcept(floorMenu);
         ToggleMenu(floorMenu);
     }
 
     public void OnClickFurniture()
     {
-        floorMenu.SetActive(false);
+        DeactivateSubsExcept(furnitureMenu);
         ToggleMenu(furnitureMenu);
     }
 
     // Deactivates any sub menu of the constrution options.
     public void DeactivateSubs()
     {
+        WorldController.Instance.mouseController.ClearMouseMode(true);
         furnitureMenu.SetActive(false);
         floorMenu.SetActive(false);
     }
@@ -51,6 +71,18 @@ public class ConstructionMenu : MonoBehaviour
     public void ToggleMenu(GameObject menu)
     {
         menu.SetActive(!menu.activeSelf);
+    }
+
+    public void DeactivateSubsExcept(GameObject menu)
+    {
+        WorldController.Instance.mouseController.ClearMouseMode(true);
+        foreach (GameObject subMenu in FurnitureSubs)
+        {
+            if (subMenu != menu)
+            {
+                subMenu.SetActive(false);
+            }
+        }
     }
 
     private void Start()
@@ -62,12 +94,12 @@ public class ConstructionMenu : MonoBehaviour
         furnitureMenu = cm.furnitureMenu;
         floorMenu = cm.floorMenu;
 
+        // Add liseners here.
         buttonDeconstruction.onClick.AddListener(delegate
         {
             OnClickDeconstruct();
         });
 
-        // Add liseners here.
         buttonFloors.onClick.AddListener(delegate
         {
             OnClickFloors();

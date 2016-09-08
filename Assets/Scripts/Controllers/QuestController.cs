@@ -14,12 +14,12 @@ using UnityEngine;
 public class QuestController
 {
     private readonly float checkDelayInSeconds;
+
     private float totalDeltaTime;
 
     public QuestController()
     {
         checkDelayInSeconds = 5f;
-        LoadLuaScript();
     }
 
     public void Update(float deltaTime)
@@ -32,18 +32,9 @@ public class QuestController
         }
     }
 
-    private void LoadLuaScript()
-    {
-        string filePath = System.IO.Path.Combine(Application.streamingAssetsPath, "LUA");
-        filePath = System.IO.Path.Combine(filePath, "Quest.lua");
-        string luaCode = System.IO.File.ReadAllText(filePath);
-
-        new QuestActions(luaCode);
-    }
-
     private void CheckAllAcceptedQuests()
     {
-        List<Quest> ongoingQuests = World.Current.Quests.Where(q => q.IsAccepted && !q.IsCompleted).ToList();
+        List<Quest> ongoingQuests = PrototypeManager.Quest.Values.Where(q => q.IsAccepted && !q.IsCompleted).ToList();
 
         foreach (Quest quest in ongoingQuests)
         {
@@ -54,7 +45,7 @@ public class QuestController
         }
 
         List<Quest> completedQuestWithUnCollectedRewards =
-            World.Current.Quests.Where(q => q.IsCompleted && q.Rewards.Any(r => !r.IsCollected)).ToList();
+            PrototypeManager.Quest.Values.Where(q => q.IsCompleted && q.Rewards.Any(r => !r.IsCollected)).ToList();
 
         foreach (Quest quest in completedQuestWithUnCollectedRewards)
         {
@@ -70,7 +61,7 @@ public class QuestController
         quest.IsCompleted = true;
         foreach (QuestGoal goal in quest.Goals)
         {
-            QuestActions.CallFunction(goal.IsCompletedLuaFunction, goal);
+            FunctionsManager.Quest.Call(goal.IsCompletedLuaFunction, goal);
             quest.IsCompleted &= goal.IsCompleted;
         }
 
@@ -83,7 +74,7 @@ public class QuestController
         {
             if (!reward.IsCollected)
             {
-                QuestActions.CallFunction(reward.OnRewardLuaFunction, reward);
+                FunctionsManager.Quest.Call(reward.OnRewardLuaFunction, reward);
             }
         }
     }

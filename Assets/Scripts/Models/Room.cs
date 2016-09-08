@@ -19,11 +19,12 @@ using UnityEngine;
 public class Room : IXmlSerializable
 {
     // Dictionary with the amount of gas in room stored in preasure(in atm) multiplyed by number of tiles.
-    private Dictionary<string, float> atmosphericGasses; 
+    private Dictionary<string, float> atmosphericGasses;
     private Dictionary<string, string> deltaGas;
 
     private List<Tile> tiles;
- 
+    private float temperature;
+
     public Room()
     {
         tiles = new List<Tile>();
@@ -36,6 +37,14 @@ public class Room : IXmlSerializable
         get
         {
             return World.Current.GetRoomID(this);
+        }
+    }
+
+    public float Temperature
+    {
+        get
+        {
+            return temperature;
         }
     }
 
@@ -87,7 +96,7 @@ public class Room : IXmlSerializable
             // Try building new rooms for each of our NESW directions.
             foreach (Tile t in sourceTile.GetNeighbours())
             {
-                if (t.Room != null && (onlyIfOutside == false || t.Room.IsOutsideRoom()))
+                if (t != null && t.Room != null && (onlyIfOutside == false || t.Room.IsOutsideRoom()))
                 {
                     ActualFloodFill(t, oldRoom, sizeOfOldRoom);
                 }
@@ -107,7 +116,7 @@ public class Room : IXmlSerializable
                 // to remove the room from the world's list.
                 if (oldRoom.tiles.Count > 0)
                 {
-                    Debug.LogError("'oldRoom' still has tiles assigned to it. This is clearly wrong.");
+                    Debug.ULogErrorChannel("Room", "'oldRoom' still has tiles assigned to it. This is clearly wrong.");
                 }
 
                 world.DeleteRoom(oldRoom);
@@ -124,7 +133,7 @@ public class Room : IXmlSerializable
             // This doesn't work for the gas calculations and needs to be fixed.
             foreach (Tile t in sourceTile.GetNeighbours())
             {
-                if (t.Room != null && (onlyIfOutside == false || t.Room.IsOutsideRoom()))
+                if (t != null && t.Room != null && (onlyIfOutside == false || t.Room.IsOutsideRoom()))
                 {
                     world.DeleteRoom(t.Room);
                 }
@@ -173,7 +182,57 @@ public class Room : IXmlSerializable
         return tiles.Count();
     }
 
-    // Changes gas by an amount in preasure(in atm) multiplyed by number of tiles.
+    public Tile[] FindExits()
+    {
+        List<Tile> exits = new List<Tile>();
+        foreach (Tile tile in tiles)
+        {
+            Tile[] neighbours = tile.GetNeighbours();
+            foreach (Tile tile2 in neighbours)
+            {
+                if (tile2 != null && tile2.Furniture != null)
+                {
+                    if (tile2.Furniture.IsExit())
+                    {
+                        // We have found an exit
+                        exits.Add(tile2);
+                    }
+                }      
+            }
+        }
+
+        return exits.ToArray();
+    }
+        
+    public Dictionary<Tile, Room> GetNeighbours()
+    {
+        Dictionary<Tile, Room> neighboursRooms = new Dictionary<Tile, Room>();
+
+        Tile[] exits = this.FindExits();
+
+        foreach (Tile t in exits)
+        {
+            // Loop over the exits to find a different room
+            Tile[] neighbours = t.GetNeighbours();
+            foreach (Tile tile2 in neighbours)
+            {
+                if (tile2 == null || tile2.Room == null)
+                {
+                    continue;
+                }
+
+                // We have found a room
+                if (tile2.Room != this)
+                {
+                    neighboursRooms[tile2] = tile2.Room;
+                }
+            }
+        }
+
+        return neighboursRooms;
+    }
+
+    // Changes gas by an amount in preasure(in atm) multiplyed by number of tiles
     public void ChangeGas(string name, float amount)
     {
         if (IsOutsideRoom())
@@ -243,7 +302,18 @@ public class Room : IXmlSerializable
         return 0;
     }
 
-    // Gets gas amount in preasure(in atm).
+    public float GetGasPressure()
+    {
+        float pressure = 0;
+        foreach (float p in atmosphericGasses.Values)
+        {
+            pressure += p;
+        }
+
+        return pressure;
+    }
+
+    // Gets gas amount in pressure (in atm).
     public float GetGasPressure(string name)
     {
         if (atmosphericGasses.ContainsKey(name))
@@ -281,6 +351,16 @@ public class Room : IXmlSerializable
         }
 
         return t;
+    }
+
+    public float GetTemperature()
+    {
+        return temperature;
+    }
+
+    public void ChangeTemperature(float change)
+    {
+        temperature += change;
     }
 
     public string[] GetGasNames()
@@ -417,6 +497,8 @@ public class Room : IXmlSerializable
             // so we can just copy the old gas ratios.
             newRoom.CopyGasPreasure(oldRoom, sizeOfOldRoom);
         }
+
+        newRoom.FindExits();
 
         // Tell the world that a new room has been formed.
         World.Current.AddRoom(newRoom);

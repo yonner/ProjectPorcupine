@@ -1,6 +1,6 @@
 ﻿#region License
 // ====================================================
-// Project Porcupine Copyright(c) 2016 Team Porcupine
+// Project Porcupine Copyright(C) 2016 Team Porcupine
 // This program comes with ABSOLUTELY NO WARRANTY; This is free software, 
 // and you are welcome to redistribute it under certain conditions; See 
 // file LICENSE, which is part of this source code package, for details.
@@ -96,8 +96,8 @@ public class Temperature
 
         if (elapsed >= updateInterval)
         {
-            ProgressTemperature(Time.deltaTime);
-            elapsed = 0;
+            ProgressTemperature(updateInterval);
+            elapsed = elapsed - updateInterval;
         }
     }
 
@@ -134,7 +134,7 @@ public class Temperature
     /// </summary>
     /// <param name="x">X coordinates.</param>
     /// <param name="y">Y coordinates.</param>
-    /// <param name="temp">Temeprature to set at x,y.</param>
+    /// <param name="temp">Temperature to set at x,y.</param>
     public void SetTemperature(int x, int y, float temp)
     {
         if (IsWithinTemperatureBounds(temp))
@@ -148,7 +148,7 @@ public class Temperature
     /// </summary>
     /// <param name="x">X coordinates.</param>
     /// <param name="y">Y coordinates.</param>
-    /// <param name="incr">Temeprature to increase at x,y.</param>
+    /// <param name="incr">Temperature to increase at x,y.</param>
     public void ChangeTemperature(int x, int y, float incr)
     {
         if (IsWithinTemperatureBounds(temperature[offset][GetIndex(x, y)] + incr))
@@ -212,7 +212,8 @@ public class Temperature
         }
         else
         {
-            Debug.LogWarning(string.Format("Yep, something is wrong with your temperature: {0}.", temp));
+            // string.format not needed with UberLogger.
+            Debug.ULogWarningChannel("Temperature", "Yep, something is wrong with your temperature: {0}.", temp);
             return false;
         }
     }
@@ -230,7 +231,7 @@ public class Temperature
         }
         else
         {
-            Debug.LogWarning(string.Format("Trying to set a thermal diffusivity that may break the world: {0}.", thermal_diff));
+            Debug.ULogWarningChannel("Temperature", "Trying to set a thermal diffusivity that may break the world: {0}.", thermal_diff);
             return false;
         }
     }

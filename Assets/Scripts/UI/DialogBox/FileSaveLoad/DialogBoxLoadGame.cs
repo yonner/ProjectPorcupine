@@ -14,7 +14,6 @@ using UnityEngine.UI;
 
 public class DialogBoxLoadGame : DialogBoxLoadSaveGame
 {
-    public GameObject dialog;
     public bool pressedDelete;
     private Component fileItem;
 
@@ -63,7 +62,7 @@ public class DialogBoxLoadGame : DialogBoxLoadSaveGame
         if (File.Exists(filePath) == false)
         {
             // TODO: Do file overwrite dialog box.
-            Debug.LogError("File doesn't exist.  What?");
+            Debug.ULogErrorChannel("DialogBoxLoadGame", "File doesn't exist.  What?");
             CloseDialog();
             return;
         }
@@ -93,25 +92,27 @@ public class DialogBoxLoadGame : DialogBoxLoadSaveGame
 
         if (File.Exists(filePath) == false)
         {
-            Debug.LogError("File doesn't exist.  What?");
+            Debug.ULogErrorChannel("DialogBoxLoadGame", "File doesn't exist.  What?");
             CloseDialog();
             return;
         }
 
-        CloseSureDialog();
         File.Delete(filePath);
         CloseDialog();
         ShowDialog();
     }
 
-    public void CloseSureDialog()
-    {
-        dialog.SetActive(false);
-    }
-
     public void DeleteWasClicked()
     {
-        dialog.SetActive(true);
+        DialogBoxManager dbm = GameObject.Find("Dialog Boxes").GetComponent<DialogBoxManager>();
+        dbm.dialogBoxAreYouSure.Closed = () =>
+        {
+            if (dbm.dialogBoxAreYouSure.Result == DialogBoxResult.Yes)
+            {
+                DeleteFile();
+            }
+        };
+        dbm.dialogBoxAreYouSure.ShowDialog();
     }
 
     public void LoadWorld(string filePath)
@@ -120,7 +121,7 @@ public class DialogBoxLoadGame : DialogBoxLoadSaveGame
         // from the load dialog box.
 
         // Get the file name from the save file dialog box.
-        Debug.Log("LoadWorld button was clicked.");
+        Debug.ULogChannel("DialogBoxLoadGame", "LoadWorld button was clicked.");
 
         WorldController.Instance.LoadWorld(filePath);
     }
