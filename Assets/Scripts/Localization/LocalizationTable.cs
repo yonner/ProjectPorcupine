@@ -37,7 +37,7 @@ namespace ProjectPorcupine.Localization
 
         public static event Action CBLocalizationFilesChanged;
 
-        private enum FallbackMode
+        public enum FallbackMode
         {
             ReturnKey, ReturnDefaultLanguage
         }
@@ -62,6 +62,15 @@ namespace ProjectPorcupine.Localization
         {
             // Return the localization of the advanced method.
             return GetLocalization(key, FallbackMode.ReturnDefaultLanguage, currentLanguage, additionalValues);
+        }
+
+        public static void SetLocalization(int lang)
+        {
+            string[] languages = GetLanguages();
+            currentLanguage = languages[lang];
+            Settings.SetSetting("localization", languages[lang]);
+            LocalizationLoader loader = GameObject.Find("Controllers").GetComponent(typeof(LocalizationLoader)) as LocalizationLoader;
+            loader.UpdateLocalizationTable();
         }
 
         public static void LoadingLanguagesFinished()
@@ -96,18 +105,44 @@ namespace ProjectPorcupine.Localization
                 {
                     localizationTable[localizationCode] = new Dictionary<string, string>();
                 }
-                
-                string[] lines = File.ReadAllLines(path);
-                foreach (string line in lines)
-                {
-                    string[] keyValuePair = line.Split(new char[] { '=' }, 2);
-                    if (keyValuePair.Length != 2)
-                    {
-                        Debug.ULogErrorChannel("LocalizationTable", string.Format("Invalid format of localization string. Actual {0}", line));
-                        continue;
-                    }
 
-                    localizationTable[localizationCode][keyValuePair[0]] = keyValuePair[1];
+                //Read all lines in advance, we need it to know how the language is called.
+                string[] lines = File.ReadAllLines(path);
+
+                //We assume that A) the key is the first line B) the key is always the localizationCode
+                //If not, we know this language hasn't been updated yet, so insert the localizationCode as key and value
+                if (lines.Length > 0) //If this if check will ever return false... we now something is terribly wrong!
+                {
+                    //Split the line
+                    string[] line = lines[0].Split(new char[] { '=' }, 2);
+
+                    //Check if the language starts with a valid name.
+                    if(line[0] == "lang")
+                    {
+                        //It does, add it to the list, we need it later.
+                        localizationTable[localizationCode]["lang"] = line[1];
+                    }
+                    else
+                    {
+                        //It doesn't, add the localizationCode as a fallback for now.
+                        localizationTable[localizationCode]["lang"] = localizationCode;
+                    }
+                }
+
+                // Only the current and default languages translations will be loaded in memory.
+                if (localizationCode == DefaultLanguage || localizationCode == currentLanguage)
+                {
+                    foreach (string line in lines)
+                    {
+                        string[] keyValuePair = line.Split(new char[] { '=' }, 2);
+                        if (keyValuePair.Length != 2)
+                        {
+                            Debug.ULogErrorChannel("LocalizationTable", string.Format("Invalid format of localization string. Actual {0}", line));
+                            continue;
+                        }
+
+                        localizationTable[localizationCode][keyValuePair[0]] = keyValuePair[1];
+                    }
                 }
             }
             catch (FileNotFoundException exception)
@@ -119,7 +154,7 @@ namespace ProjectPorcupine.Localization
         /// <summary>
         /// Returns the localization for the given key, or the key itself, if no translation exists.
         /// </summary>
-        private static string GetLocalization(string key, FallbackMode fallbackMode, string language, params string[] additionalValues)
+        public static string GetLocalization(string key, FallbackMode fallbackMode, string language, params string[] additionalValues)
         {
             string value;
             if (localizationTable.ContainsKey(language) && localizationTable[language].TryGetValue(key, out value))

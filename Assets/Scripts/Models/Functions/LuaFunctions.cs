@@ -32,6 +32,9 @@ public class LuaFunctions
         RegisterGlobal(typeof(World));
         RegisterGlobal(typeof(WorldController));
         RegisterGlobal(typeof(Connection));
+        RegisterGlobal(typeof(Scheduler.Scheduler));
+        RegisterGlobal(typeof(Scheduler.ScheduledEvent));
+        RegisterGlobal(typeof(ProjectPorcupine.Jobs.RequestedItem));
     }
 
     /// <summary>
@@ -41,6 +44,16 @@ public class LuaFunctions
     public void RegisterGlobal(Type type)
     {
         script.Globals[type.Name] = type;
+    }
+
+    /// <summary>
+    /// Determines whether there is a Lua global with the given name.
+    /// </summary>
+    /// <returns><c>true</c> if there is a global with the given name; otherwise, <c>false</c>.</returns>
+    /// <param name="name">The global name.</param>
+    public bool HasGlobal(string name)
+    {
+        return name != null && script.Globals[name] != null;
     }
 
     /// <summary>
@@ -95,11 +108,11 @@ public class LuaFunctions
     /// <param name="functionNames">Function names.</param>
     /// <param name="instance">An instance of the actions type.</param>
     /// <param name="deltaTime">Delta time.</param>
-    public void CallWithInstance(string[] functionNames, object instance, float deltaTime = 0f)
+    public void CallWithInstance(string[] functionNames, object instance,  params object[] parameters)
     {
         if (instance == null)
         {
-            // These errors are about the lua code so putting themin the Lua channel.
+            // These errors are about the lua code so putting them in the Lua channel.
             Debug.ULogErrorChannel("Lua", "Instance is null, cannot call LUA function (something is fishy).");
         }
 
@@ -112,16 +125,13 @@ public class LuaFunctions
             }
 
             DynValue result;
-            if (deltaTime != 0f)
-            {
-                result = Call(fn, instance, deltaTime);
-            }
-            else
-            {
-                result = Call(fn, instance);
-            }
+            object[] instanceAndParams = new object[parameters.Length + 1];
+            instanceAndParams[0] = instance;
+            parameters.CopyTo(instanceAndParams, 1);
 
-            if (result.Type == DataType.String)
+            result = Call(fn, instanceAndParams);
+
+            if (result != null && result.Type == DataType.String)
             {
                 Debug.ULogErrorChannel("Lua", result.String);
             }
