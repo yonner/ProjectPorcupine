@@ -6,7 +6,7 @@
 // file LICENSE, which is part of this source code package, for details.
 // ====================================================
 #endregion
-using System.Collections.Generic;
+
 using ProjectPorcupine.Rooms;
 using Scheduler;
 
@@ -20,14 +20,10 @@ public class PrototypeManager
     /// </summary>
     public PrototypeManager()
     {
-        Inventory = new PrototypeMap<InventoryCommon>("Inventories", "Inventory");
+        Inventory = new PrototypeMap<Inventory>("Inventories", "Inventory");
         TileType = new PrototypeMap<TileType>("Tiles", "Tile");
         Furniture = new PrototypeMap<Furniture>("Furnitures", "Furniture");
-        FurnitureConstructJob = new PrototypeMap<Job>();
-        FurnitureDeconstructJob = new PrototypeMap<Job>();
         Utility = new PrototypeMap<Utility>("Utilities", "Utility");
-        UtilityConstructJob = new PrototypeMap<Job>();
-        UtilityDeconstructJob = new PrototypeMap<Job>();
         RoomBehavior = new PrototypeMap<RoomBehavior>("RoomBehaviors", "RoomBehavior");
         Need = new PrototypeMap<Need>("Needs", "Need");
         Trader = new PrototypeMap<TraderPrototype>("Traders", "Trader");
@@ -39,6 +35,9 @@ public class PrototypeManager
         Headline = new PrototypeMap<Headline>("Headlines", "Headline");
         Overlay = new PrototypeMap<OverlayDescriptor>("Overlays", "Overlay");
         Ship = new PrototypeMap<Ship>("Ships", "Ship");
+        DevConsole = new PrototypeMap<DeveloperConsole.CommandPrototype>("ConsoleCommands", "ConsoleCommand");
+        SettingsCategories = new PrototypeMap<SettingsCategory>("Categories", "Category");
+        PerformanceHUD = new PrototypeMap<PerformanceGroupReader>("ComponentGroups", "ComponentGroup");
     }
 
     /// <summary>
@@ -54,32 +53,10 @@ public class PrototypeManager
     public static PrototypeMap<Furniture> Furniture { get; private set; }
 
     /// <summary>
-    /// Gets the furniture job construct prototype map.
-    /// </summary>
-    /// <value>The furniture job construct prototype map.</value>
-    public static PrototypeMap<Job> FurnitureConstructJob { get; private set; }
-
-    /// <summary>
-    /// Gets the furniture job deconstruct prototype map.
-    /// </summary>
-    /// <value>The furniture job deconstruct prototype map.</value>
-    public static PrototypeMap<Job> FurnitureDeconstructJob { get; private set; }
-
-    /// <summary>
     /// Gets the utility prototype map.
     /// </summary>
     /// <value>The utility prototype map.</value>
     public static PrototypeMap<Utility> Utility { get; private set; }
-
-    /// Gets the furniture construct job prototype map.
-    /// </summary>
-    /// <value>The furniture construct job prototype map.</value>
-    public static PrototypeMap<Job> UtilityConstructJob { get; private set; }
-
-    /// Gets the furniture deconstruct job prototype map.
-    /// </summary>
-    /// <value>The furniture deconstructjob prototype map.</value>
-    public static PrototypeMap<Job> UtilityDeconstructJob { get; private set; }
 
     /// Gets the roomBehavior prototype map.
     /// </summary>
@@ -90,7 +67,7 @@ public class PrototypeManager
     /// Gets the inventory prototype map.
     /// </summary>
     /// <value>The inventory prototype map.</value>
-    public static PrototypeMap<InventoryCommon> Inventory { get; private set; }
+    public static PrototypeMap<Inventory> Inventory { get; private set; }
 
     /// <summary>
     /// Gets the need prototype map.
@@ -145,6 +122,24 @@ public class PrototypeManager
     /// </summary>
     /// <value>The overlay prototype map.</value>
     public static PrototypeMap<OverlayDescriptor> Overlay { get; private set; }
+
+    /// <summary>
+    /// Gets the DevConsole prototype map.
+    /// </summary>
+    /// <value>The DevConsole prototype map.</value>
+    public static PrototypeMap<DeveloperConsole.CommandPrototype> DevConsole { get; private set; }
+
+    /// <summary>
+    /// Gets the SettingsCategory prototype map.
+    /// </summary>
+    /// <value>The SettingsCategory prototype map.</value>
+    public static PrototypeMap<SettingsCategory> SettingsCategories { get; private set; }
+
+    /// <summary>
+    /// Gets the PerformanceHUD prototype map.
+    /// </summary>
+    /// <value>The PerformanceHUD prototype map.</value>
+    public static PrototypeMap<PerformanceGroupReader> PerformanceHUD { get; private set; }
 
     /// <summary>
     /// Gets the ship prototype map.

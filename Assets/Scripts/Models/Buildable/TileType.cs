@@ -34,7 +34,7 @@ public class TileType : IPrototypable, IEquatable<TileType>
     /// <value>The empty tile type.</value>
     public static TileType Empty
     {
-        get { return PrototypeManager.TileType.Get("Empty"); }
+        get { return PrototypeManager.TileType.Get("empty"); }
     }
 
     /// <summary>
@@ -43,7 +43,7 @@ public class TileType : IPrototypable, IEquatable<TileType>
     /// <value>The floor tile type.</value>
     public static TileType Floor
     {
-        get { return PrototypeManager.TileType.Get("Floor"); }
+        get { return PrototypeManager.TileType.Get("floor"); }
     }
 
     /// <summary>
@@ -51,18 +51,6 @@ public class TileType : IPrototypable, IEquatable<TileType>
     /// </summary>
     /// <value>The tile type.</value>
     public string Type { get; private set; }
-
-    /// <summary>
-    /// Gets the name of the type of tile.
-    /// </summary>
-    /// <value>The tile type name.</value>
-    public string Name { get; private set; }
-
-    /// <summary>
-    /// Gets the description of the type of tile.
-    /// </summary>
-    /// <value>The tile type description.</value>
-    public string Description { get; private set; }
 
     /// <summary>
     /// Gets the base movement cost.
@@ -163,7 +151,7 @@ public class TileType : IPrototypable, IEquatable<TileType>
             return value.Boolean;
         }
 
-        Debug.ULogChannel("Lua", "Found no lua function " + CanBuildHereLua);
+        UnityDebugger.Debugger.Log("Lua", "Found no lua function " + CanBuildHereLua);
         return false;
     }
 
@@ -180,14 +168,6 @@ public class TileType : IPrototypable, IEquatable<TileType>
         {
             switch (reader.Name)
             {
-                case "Name":
-                    reader.Read();
-                    Name = reader.ReadContentAsString();
-                    break;
-                case "Description":
-                    reader.Read();
-                    Description = reader.ReadContentAsString();
-                    break;
                 case "BaseMovementCost":
                     reader.Read();
                     BaseMovementCost = reader.ReadContentAsFloat();
@@ -232,7 +212,7 @@ public class TileType : IPrototypable, IEquatable<TileType>
         float jobTimeValue;
         if (float.TryParse(jobTime, out jobTimeValue) == false)
         {
-            Debug.ULogErrorChannel(ULogChanelName, "Could not load jobTime for TyleType: {0} -- jobTime readed {1}", Type, jobTime);
+            UnityDebugger.Debugger.LogErrorFormat(ULogChanelName, "Could not load jobTime for TyleType: {0} -- jobTime readed {1}", Type, jobTime);
             return;
         }
 
@@ -255,7 +235,7 @@ public class TileType : IPrototypable, IEquatable<TileType>
             }
             else
             {
-                Debug.ULogErrorChannel(ULogChanelName, "Could not load Inventory item for TyleType: {0}", Type);
+                UnityDebugger.Debugger.LogErrorFormat(ULogChanelName, "Could not load Inventory item for TyleType: {0}", Type);
             }
         }
 
@@ -269,7 +249,7 @@ public class TileType : IPrototypable, IEquatable<TileType>
             false,
             true)
         {
-            JobDescription = "job_build_floor_" + this
+            Description = "job_build_floor_" + this
         };
     }
 }

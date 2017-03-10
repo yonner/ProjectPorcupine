@@ -50,24 +50,12 @@ public class MouseCursor
         
         LoadCursorTexture();
         BuildCursor();
+
+        KeyboardManager.Instance.RegisterInputAction("ToggleCursorTextBox", KeyboardMappedInputType.KeyUp, () => { cursorOverride = !cursorOverride; });
     }
 
     public void Update()
     {
-        // Hold Ctrl and press M to activate.
-        if ((Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) && Input.GetKeyDown(KeyCode.M))
-        {
-            // Toggle cursorOverride.
-            if (cursorOverride == false)
-            {
-                cursorOverride = true;
-            }
-            else
-            {
-                cursorOverride = false;
-            }                
-        }
-
         ShowCursor();
 
         if (cursorOverride == true)
@@ -114,8 +102,6 @@ public class MouseCursor
         upperRight = new CursorTextBox(cursorGO, TextAnchor.MiddleLeft, style, upperRightPostion, cursorTextBoxSize);
         lowerLeft = new CursorTextBox(cursorGO, TextAnchor.MiddleRight, style, lowerLeftPostion, cursorTextBoxSize);
         lowerRight = new CursorTextBox(cursorGO, TextAnchor.MiddleLeft, style, lowerRightPostion, cursorTextBoxSize);        
-
-        Debug.ULogChannel("MouseCursor", "Cursor Built");
     }
 
     private void UpdateCursor()
@@ -146,7 +132,7 @@ public class MouseCursor
             // Placing furniture object.
             if (bmc.buildMode == BuildMode.FURNITURE)
             {
-                lowerRight.text.text = PrototypeManager.Furniture.Get(bmc.buildModeType).Name;
+                lowerRight.text.text = PrototypeManager.Furniture.Get(bmc.buildModeType).GetName();
 
                 upperLeft.text.color = Color.green;
                 upperRight.text.color = Color.red;

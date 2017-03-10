@@ -7,7 +7,6 @@
 // ====================================================
 #endregion
 using System.Collections.Generic;
-using UnityEngine;
 
 public class Path_TileGraph
 {
@@ -18,7 +17,7 @@ public class Path_TileGraph
 
     public Path_TileGraph(World world)
     {
-        Debug.ULogChannel("Path_TileGraph", "Entered Path_TileGraph");
+        UnityDebugger.Debugger.Log("Path_TileGraph", "Entered Path_TileGraph");
 
        /*
         * Loop through all tiles of the world
@@ -26,6 +25,7 @@ public class Path_TileGraph
         *  Do we create nodes for non-floor tiles?  NO!
         *  Do we create nodes for tiles that are completely unwalkable (i.e. walls)?  NO!
         */
+
         nodes = new Dictionary<Tile, Path_Node<Tile>>();
 
         for (int x = 0; x < world.Width; x++)
@@ -44,7 +44,7 @@ public class Path_TileGraph
             }
         }
 
-        Debug.ULogChannel("Path_TileGraph", "Created " + nodes.Count + " nodes.");
+        UnityDebugger.Debugger.Log("Path_TileGraph", "Created " + nodes.Count + " nodes.");
 
         // Now loop through all nodes again
         // Create edges for neighbours
@@ -56,6 +56,11 @@ public class Path_TileGraph
         
     public void RegenerateGraphAtTile(Tile changedTile)
     {
+        if (changedTile == null)
+        {
+            return;
+        }
+
         GenerateEdgesByTile(changedTile);
         foreach (Tile tile in changedTile.GetNeighbours(true))
         {
@@ -74,7 +79,7 @@ public class Path_TileGraph
         List<Path_Edge<Tile>> edges = new List<Path_Edge<Tile>>();
 
         // Get a list of neighbours for the tile
-        Tile[] neighbours = t.GetNeighbours(true);
+        Tile[] neighbours = t.GetNeighbours(true, true);
 
         // NOTE: Some of the array spots could be null.
         // If neighbour is walkable, create an edge to the relevant node.

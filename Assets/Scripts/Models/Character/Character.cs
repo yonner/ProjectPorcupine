@@ -9,9 +9,8 @@
 using System;
 using System.Collections.Generic;
 using System.Xml;
-using System.Xml.Schema;
-using System.Xml.Serialization;
 using MoonSharp.Interpreter;
+using Newtonsoft.Json.Linq;
 using ProjectPorcupine.Localization;
 using ProjectPorcupine.State;
 using UnityEngine;
@@ -31,7 +30,7 @@ public enum Facing
 /// sub-classes or interfaces) to support friendly workers, enemies, etc...
 /// </summary>
 [MoonSharpUserData]
-public class Character : IXmlSerializable, ISelectable, IContextActionProvider
+public class Character : ISelectable, IContextActionProvider, IUpdatable
 {
     /// Name of the Character.
     public string name;
@@ -63,7 +62,11 @@ public class Character : IXmlSerializable, ISelectable, IContextActionProvider
     private List<Tile> movementPath;
 
     /// Tiles per second.
-    private float speed = 5f;
+    private float speed;
+    private float baseSpeed = 5f;
+
+    /// Used for health system.
+    private HealthSystem health;
 
     /// Tile where job should be carried out, if different from MyJob.tile.
     private Tile jobTile;
@@ -118,7 +121,7 @@ public class Character : IXmlSerializable, ISelectable, IContextActionProvider
     {
         get
         {
-            return 5f;
+            return speed;
         }
     }
 
@@ -155,6 +158,16 @@ public class Character : IXmlSerializable, ISelectable, IContextActionProvider
         get
         {
             return CurrTile.Z + TileOffset.z;
+        }
+    }
+
+    public Bounds Bounds
+    {
+        get
+        {
+            return new Bounds(
+                new Vector3(X - 1, Y - 1, 0),
+                new Vector3(1, 1));
         }
     }
 
@@ -215,13 +228,36 @@ public class Character : IXmlSerializable, ISelectable, IContextActionProvider
         }
     }
 
+    /// <summary>
+    /// Gets the Health of this object.
+    /// </summary>
+    public HealthSystem Health
+    {
+        get
+        {
+            if (health == null)
+            {
+                health = new HealthSystem(-1f, true, false, false, false);
+            }
+
+            return health;
+        }
+    }
+
     public IEnumerable<ContextMenuAction> GetContextMenuActions(ContextMenu contextMenu)
     {
         yield return new ContextMenuAction
         {
-            Text = "Poke " + GetName(),
+            LocalizationKey = "Poke " + GetName(),
             RequireCharacterSelected = false,
-            Action = (cm, c) => Debug.ULogChannel("Character", GetDescription())
+            Action = (cm, c) => { UnityDebugger.Debugger.Log("Character", GetDescription()); health.CurrentHealth -= 5; }
+        };
+
+        yield return new ContextMenuAction
+        {
+            LocalizationKey = "Heal +5",
+            RequireCharacterSelected = false,
+            Action = (cm, c) => { health.CurrentHealth += 5; }
         };
     }
 
@@ -287,7 +323,7 @@ public class Character : IXmlSerializable, ISelectable, IContextActionProvider
     #endregion
 
     /// Runs every "frame" while the simulation is not paused
-    public void Update(float deltaTime)
+    public void EveryFrameUpdate(float deltaTime)
     {
         // Run all the global states first so that they can interrupt or queue up new states
         foreach (State globalState in globalStates)
@@ -327,89 +363,49 @@ public class Character : IXmlSerializable, ISelectable, IContextActionProvider
         }
     }
 
-    #region IXmlSerializable implementation
-
-    public XmlSchema GetSchema()
+    public void FixedFrequencyUpdate(float deltaTime)
     {
-        return null;
+        throw new NotImplementedException();
     }
 
-    public void WriteXml(XmlWriter writer)
+    public object ToJSon()
     {
-        writer.WriteAttributeString("name", name);
-        writer.WriteAttributeString("X", CurrTile.X.ToString());
-        writer.WriteAttributeString("Y", CurrTile.Y.ToString());
-        writer.WriteAttributeString("Z", CurrTile.Z.ToString());
+        JObject characterJson = new JObject();
 
-        // TODO: It is more verbose, but easier to parse if these are represented as key-value elements rather than a string with delimiters.
-        string needString = string.Empty;
-        foreach (Need n in Needs)
+        characterJson.Add("Name", name);
+        characterJson.Add("X", CurrTile.X);
+        characterJson.Add("Y", CurrTile.Y);
+        characterJson.Add("Z", CurrTile.Z);
+
+        JObject needsJSon = new JObject();
+        foreach (Need need in Needs)
         {
-            int storeAmount = (int)(n.Amount * 10);
-            needString = needString + n.Type + ";" + storeAmount.ToString() + ":";
+            needsJSon.Add(need.Name, need.Amount);
         }
 
-        writer.WriteAttributeString("needs", needString);
+        characterJson.Add("Needs", needsJSon);
 
-        writer.WriteAttributeString("r", characterColor.r.ToString());
-        writer.WriteAttributeString("b", characterColor.b.ToString());
-        writer.WriteAttributeString("g", characterColor.g.ToString());
-        writer.WriteAttributeString("rUni", characterUniformColor.r.ToString());
-        writer.WriteAttributeString("bUni", characterUniformColor.b.ToString());
-        writer.WriteAttributeString("gUni", characterUniformColor.g.ToString());
-        writer.WriteAttributeString("rSkin", characterSkinColor.r.ToString());
-        writer.WriteAttributeString("bSkin", characterSkinColor.b.ToString());
-        writer.WriteAttributeString("gSkin", characterSkinColor.g.ToString());
+        JObject colorsJson = new JObject();
+        colorsJson.Add("CharacterColor", new JArray(characterColor.r, characterColor.g, characterColor.b));
+        colorsJson.Add("UniformColor", new JArray(characterUniformColor.r, characterUniformColor.g, characterUniformColor.b));
+        colorsJson.Add("SkinColor", new JArray(characterSkinColor.r, characterSkinColor.g, characterSkinColor.b));
+        characterJson.Add("Colors", colorsJson);
 
-        writer.WriteStartElement("Stats");
+        JObject statsJSon = new JObject();
         foreach (Stat stat in stats.Values)
         {
-            writer.WriteStartElement("Stat");
-            stat.WriteXml(writer);
-            writer.WriteEndElement();
+            needsJSon.Add(stat.Name, stat.Value);
         }
 
-        writer.WriteEndElement();
+        characterJson.Add("Stats", statsJSon);
+
         if (inventory != null)
         {
-            writer.WriteStartElement("Inventories");
-            writer.WriteStartElement("Inventory");
-            inventory.WriteXml(writer);
-            writer.WriteEndElement();
-            writer.WriteEndElement();
+            characterJson.Add("Inventories", new JArray(inventory.ToJSon()));
         }
+
+        return characterJson;
     }
-
-    public void ReadXml(XmlReader reader)
-    {
-        if (reader.GetAttribute("needs") == null)
-        {
-            return;
-        }
-
-        string[] needListA = reader.GetAttribute("needs").Split(new char[] { ':' });
-        foreach (string s in needListA)
-        {
-            string[] needListB = s.Split(new char[] { ';' });
-            foreach (Need n in Needs)
-            {
-                if (n.Type == needListB[0])
-                {
-                    int storeAmount;
-                    if (int.TryParse(needListB[1], out storeAmount))
-                    {
-                        n.Amount = (float)storeAmount / 10;
-                    }
-                    else
-                    {
-                        Debug.ULogErrorChannel("Character", "Character.ReadXml() expected an int when deserializing needs");
-                    }
-                }
-            }
-        }
-    }
-
-    #endregion
 
     #region ISelectableInterface implementation
 
@@ -425,7 +421,7 @@ public class Character : IXmlSerializable, ISelectable, IContextActionProvider
 
     public IEnumerable<string> GetAdditionalInfo()
     {
-        yield return string.Format("HitPoints: 100/100");
+        yield return health.TextForSelectionPanel();
 
         foreach (Need n in Needs)
         {
@@ -434,8 +430,7 @@ public class Character : IXmlSerializable, ISelectable, IContextActionProvider
 
         foreach (Stat stat in stats.Values)
         {
-            // TODO: Localization
-            yield return string.Format("{0}: {1}", stat.Type, stat.Value);
+            yield return LocalizationTable.GetLocalization("stat_" + stat.Type.ToLower(), stat.Value);
         }
     }
 
@@ -461,7 +456,7 @@ public class Character : IXmlSerializable, ISelectable, IContextActionProvider
             return "job_no_job_desc";
         }
 
-        return MyJob.JobDescription;
+        return MyJob.Description;
     }
 
     #endregion
@@ -519,7 +514,7 @@ public class Character : IXmlSerializable, ISelectable, IContextActionProvider
             int statValue;
             if (!int.TryParse(reader.GetAttribute("value"), out statValue))
             {
-                Debug.ULogErrorChannel("Character", "Stat element did not have a value!");
+                UnityDebugger.Debugger.LogError("Character", "Stat element did not have a value!");
                 continue;
             }
 
@@ -547,6 +542,7 @@ public class Character : IXmlSerializable, ISelectable, IContextActionProvider
     {
         LoadNeeds();
         LoadStats();
+        UseStats();
     }
 
     private void LoadNeeds()
@@ -575,6 +571,18 @@ public class Character : IXmlSerializable, ISelectable, IContextActionProvider
             stats.Add(newStat.Type, newStat);
         }
 
-        Debug.ULogChannel("Character", "Initialized " + stats.Count + " Stats.");
+        UnityDebugger.Debugger.Log("Character", "Initialized " + stats.Count + " Stats.");
+    }
+
+    /// <summary>
+    /// Use the stats of the character to determine various traits.
+    /// </summary>
+    private void UseStats()
+    {
+        // The speed is equal to (baseSpeed +/-30% of baseSpeed depending on Dexterity)
+        speed = baseSpeed + (0.3f * baseSpeed * ((Convert.ToSingle(stats["Dexterity"].Value) - 10) / 10));
+
+        // Base character max health on their constitution.
+        health = new HealthSystem(50 + (Convert.ToSingle(stats["Constitution"].Value) * 5));
     }
 }

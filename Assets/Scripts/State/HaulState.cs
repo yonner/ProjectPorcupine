@@ -52,10 +52,11 @@ namespace ProjectPorcupine.State
                     string[] inventoryTypes = character.inventory != null ?
                         new string[] { character.inventory.Type } :
                         Job.RequestedItems.Keys.ToArray();
-
                     path = World.Current.InventoryManager.GetPathToClosestInventoryOfType(inventoryTypes, character.CurrTile, Job.canTakeFromStockpile);
                     if (path != null && path.Count > 0)
                     {
+                        Inventory inv = path.Last().Inventory;
+                        inv.Claim(character, (inv.AvailableInventory < Job.RequestedItems[inv.Type].AmountDesired()) ? inv.AvailableInventory : Job.RequestedItems[inv.Type].AmountDesired());
                         character.SetState(new MoveState(character, Pathfinder.GoalTileEvaluator(path.Last(), false), path, this));
                     }
                     else if (character.inventory == null)
@@ -78,6 +79,7 @@ namespace ProjectPorcupine.State
                     int amount = Mathf.Min(Job.AmountDesiredOfInventoryType(tileInventory.Type) - amountCarried, tileInventory.StackSize);
                     DebugLog(" - Picked up {0} {1}", amount, tileInventory.Type);
                     World.Current.InventoryManager.PlaceInventory(character, tileInventory, amount);
+                    Profiler.EndSample();
                     break;
 
                 case HaulAction.DeliverMaterial:
@@ -88,6 +90,7 @@ namespace ProjectPorcupine.State
                     }
                     else
                     {
+                        Job.AddCharCantReach(character);
                         character.InterruptState();
                     }
 
@@ -99,7 +102,6 @@ namespace ProjectPorcupine.State
 
                     // Ping the Job system
                     Job.DoWork(0);
-
                     Finished();
                     break;
             }

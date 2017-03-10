@@ -31,6 +31,57 @@ public sealed class InventorySpriteController : BaseSpriteController<Inventory>
         }
     }
 
+    public static SpriteRenderer SetSprite(GameObject inventoryGO, Inventory inventory, string sortingLayerName = "Inventory")
+    {
+        SpriteRenderer sr = inventoryGO.GetComponent<SpriteRenderer>();
+        if (sr == null)
+        {
+            sr = inventoryGO.AddComponent<SpriteRenderer>();
+        }
+
+        sr.sortingLayerName = sortingLayerName;
+
+        if (inventory.Category != "crated_furniture")
+        {
+            sr.sprite = SpriteManager.GetSprite("Inventory", inventory.Type);
+            if (sr.sprite == null)
+            {
+                UnityDebugger.Debugger.LogError("InventorySpriteController", "No sprite for: " + inventory.Type);
+            }
+        }
+        else
+        {
+            sr.sprite = SpriteManager.GetSprite("Inventory", "crate");
+
+            if (sr.sprite == null)
+            {
+                UnityDebugger.Debugger.LogError("InventorySpriteController", "No sprite for: Crate");
+            }
+
+            GameObject labelGO;
+            if (inventoryGO.transform.childCount < 1)
+            {
+                // There should only ever be exactly one child of a crate, if it already has it then everything else should be correct
+                labelGO = new GameObject();
+                labelGO.transform.SetParent(inventoryGO.transform, false);
+                float scale = .5f;
+                Furniture furniture = PrototypeManager.Furniture.Get(inventory.Type);
+                scale *= 1f / Mathf.Max(furniture.Height, furniture.Width);
+                labelGO.transform.localScale = new Vector3(scale, scale, scale);
+                SpriteRenderer labelSR = labelGO.AddComponent<SpriteRenderer>();
+                labelSR.sprite = SpriteManager.GetSprite("Furniture", furniture.GetDefaultSpriteName());
+
+                Color labelSpriteColor = labelSR.color;
+                labelSpriteColor.a = .5f;
+                labelSR.color = labelSpriteColor;
+                labelSR.sortingLayerName = sortingLayerName;
+                labelSR.sortingOrder = sr.sortingOrder + 1;
+            }
+        }
+
+        return sr;
+    }
+
     public override void RemoveAll()
     {
         world.InventoryManager.InventoryCreated -= OnCreated;
@@ -44,7 +95,6 @@ public sealed class InventorySpriteController : BaseSpriteController<Inventory>
 
     protected override void OnCreated(Inventory inventory)
     {
-        // FIXME: Does not consider rotated objects
         // This creates a new GameObject and adds it to our scene.
         GameObject inventoryGameObject = new GameObject();
 
@@ -61,14 +111,7 @@ public sealed class InventorySpriteController : BaseSpriteController<Inventory>
 
         inventoryGameObject.transform.SetParent(objectParent.transform, true);
 
-        SpriteRenderer sr = inventoryGameObject.AddComponent<SpriteRenderer>();
-        sr.sprite = SpriteManager.GetSprite("Inventory", inventory.Type);
-        if (sr.sprite == null)
-        {
-            Debug.ULogErrorChannel("InventorySpriteController", "No sprite for: " + inventory.Type);
-        }
-
-        sr.sortingLayerName = "Inventory";
+        SpriteRenderer sr = SetSprite(inventoryGameObject, inventory);
 
         if (inventory.MaxStackSize > 1)
         {
@@ -91,7 +134,7 @@ public sealed class InventorySpriteController : BaseSpriteController<Inventory>
         // Make sure the furniture's graphics are correct.
         if (objectGameObjectMap.ContainsKey(inventory) == false)
         {
-            Debug.ULogErrorChannel("InventorySpriteController", "OnCharacterChanged -- trying to change visuals for inventory not in our map.");
+            UnityDebugger.Debugger.LogError("InventorySpriteController", "OnCharacterChanged -- trying to change visuals for inventory not in our map.");
             return;
         }
 

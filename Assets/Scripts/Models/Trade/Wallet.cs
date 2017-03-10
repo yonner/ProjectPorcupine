@@ -6,8 +6,10 @@
 // file LICENSE, which is part of this source code package, for details.
 // ====================================================
 #endregion
+
 using System.Collections.Generic;
-using System.Xml;
+using System.Linq;
+using Newtonsoft.Json.Linq;
 
 public class Wallet
 {
@@ -36,7 +38,12 @@ public class Wallet
 
             return null;
         }
-    } 
+    }
+
+    public string[] GetCurrencyNames()
+    {
+        return currencies.Keys.ToArray();
+    }
 
     /// <summary>
     /// Adds a currency with the given name and balance.
@@ -53,17 +60,29 @@ public class Wallet
         }
     }
 
-    /// <summary>
-    /// Writes the Wallet to the Xml.
-    /// </summary>
-    /// <param name="writer">The Xml writer.</param>
-    public void WriteXml(XmlWriter writer)
+    public JToken ToJson()
     {
+        JObject currencyJson = new JObject();
         foreach (Currency currency in currencies.Values)
         {
-            writer.WriteStartElement("Currency");
-            currency.WriteXml(writer);
-            writer.WriteEndElement();
+            currencyJson.Add(currency.Name, currency.Balance);
+        }
+
+        return currencyJson;
+    }
+
+    public void FromJson(JToken walletToken)
+    {
+        if (walletToken == null)
+        {
+            return;
+        }
+
+        JObject walletJObject = (JObject)walletToken;
+
+        foreach (JProperty currency in walletJObject.Properties())
+        {
+            AddCurrency(currency.Name, (float)currency.Value);
         }
     }
 }

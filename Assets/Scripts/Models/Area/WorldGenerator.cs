@@ -6,168 +6,216 @@
 // file LICENSE, which is part of this source code package, for details.
 // ====================================================
 #endregion
-using System.Collections;
+
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Xml;
+using System.Xml.Serialization;
 using UnityEngine;
 
 public class WorldGenerator
 {
-    public static TileType AsteroidFloorType = null;
+    private static WorldGenerator instance;
 
-    public static int startAreaWidth = 0;
-    public static int startAreaHeight = 0;
-    public static int startAreaCenterX = 0;
-    public static int startAreaCenterY = 0;
-    public static int[,] startAreaTiles = new int[0, 0];
-    public static string[,] startAreaFurnitures = new string[0, 0];
+    private TileType asteroidFloorType = null;
 
-    public static float asteroidNoiseScale = 0.2f;
-    public static float asteroidNoiseThreshhold = 0.75f;
-    public static float asteroidResourceChance = 0.15f;
-    public static Inventory[] resources;
-    public static int[] resourceMin;
-    public static int[] resourceMax;
+    private AsteroidInfo asteroidInfo;
 
-    public static void Generate(World world, int seed)
+    private int sumOfAllWeightedChances;
+
+    private HashSet<Tile> currentAsteroid;
+
+    private WorldGenerator()
     {
-        AsteroidFloorType = PrototypeManager.TileType.Get("Floor");
+    }
 
-        ReadXML();
-        Random.InitState(seed);
+    public static WorldGenerator Instance
+    {
+        get
+        {
+            if (instance == null)
+            {
+                instance = new WorldGenerator();
+            }
+
+            return instance;
+        }
+    }
+
+    public void Generate(World world, int seed)
+    {
+        asteroidFloorType = TileType.Empty;
+
         int width = world.Width;
         int height = world.Height;
         int depth = world.Depth;
+
+        ReadXML(world);
+        world.ResizeWorld(width, height, depth);
+
+        Random.InitState(seed);
         int offsetX = Random.Range(0, 10000);
         int offsetY = Random.Range(0, 10000);
 
-        int minEdgeDistance = 5;
+        sumOfAllWeightedChances = asteroidInfo.Resources.Select(x => x.WeightedChance).Sum();
 
-        int sumOfAllWeightedChances = 0;
-        foreach (Inventory resource in resources)
+        if (SceneController.GenerateAsteroids)
         {
-            sumOfAllWeightedChances += resource.StackSize;
+            // To clarify this is the formula for an ellipsoid, taking the lesser of asteroid radius and world size in that dimension
+            float averageAsteroidVolume = (4 / 3) * Mathf.PI * Mathf.Min(asteroidInfo.AsteroidSize, world.Height) * Mathf.Min(asteroidInfo.AsteroidSize, world.Width) * Mathf.Min(asteroidInfo.AsteroidSize, world.Depth);
+            int numAsteroids = (int)((world.Height * world.Width * world.Depth) / averageAsteroidVolume * asteroidInfo.AsteroidDensity);
+            numAsteroids = (int)(numAsteroids * Random.Range(.6f, 1.4f));
+
+            List<Vector3> asteroidSeeds = GeneratePoints(numAsteroids, world);
+            for (int asteroid = 0; asteroid < asteroidSeeds.Count; asteroid++)
+            {
+                GrowAsteroid(asteroidSeeds[asteroid], world);
+            }
+        }
+    }
+
+    private static void ReadXmlWallet(XmlReader reader, World world)
+    {
+        XmlReader wallet = reader.ReadSubtree();
+
+        while (wallet.Read())
+        {
+            if (wallet.Name == "Currency")
+            {
+                world.Wallet.AddCurrency(
+                    wallet.GetAttribute("name"),
+                    float.Parse(wallet.GetAttribute("startingBalance")));
+            }
+        }
+    }
+
+    private List<Vector3> GeneratePoints(int numPoints, World world)
+    {
+        List<Vector3> finalPoints = new List<Vector3>();
+        List<Vector3> workingPoints = new List<Vector3>();
+
+        for (int i = 0; i < numPoints * 4; i++)
+        {
+            workingPoints.Add(new Vector3(Random.Range(0, world.Width), Random.Range(0, world.Height), Random.Range(0, world.Depth)));
         }
 
-        for (int x = 0; x < startAreaWidth; x++)
+        for (int i = 0; i < numPoints; i++)
         {
-            for (int y = 0; y < startAreaHeight; y++)
+            if (finalPoints.Count == 0)
             {
-                int worldX = (width / 2) - startAreaCenterX + x;
-                int worldY = (height / 2) + startAreaCenterY - y;
+                int pointToAdd = Random.Range(0, workingPoints.Count);
+                finalPoints.Add(workingPoints[pointToAdd]);
+                workingPoints.RemoveAt(pointToAdd);
+            }
+            else
+            {
+                float currentFarthestTotalDistance = 0f;
+                int currentFarthestPointIndex = 0;
+                for (int j = 0; j < workingPoints.Count; j++) 
+                {
+                    float closestDistance = Mathf.Infinity;
+                    for (int k = 0; i < finalPoints.Count; k++) 
+                    {
+                        float thisDistance = Vector3.Distance(finalPoints[k], workingPoints[j]);
+                        if (thisDistance < closestDistance)
+                        {
+                            closestDistance = thisDistance;
+                        }
+                    }
 
-                Tile tile = world.GetTileAt(worldX, worldY, 0);
-                tile.Type = PrototypeManager.TileType[startAreaTiles[x, y]];
+                    if (closestDistance > currentFarthestTotalDistance)
+                    {
+                        currentFarthestTotalDistance = closestDistance;
+                        currentFarthestPointIndex = j;
+                    }
+                }
+
+                finalPoints.Add(workingPoints[currentFarthestPointIndex]);
+                workingPoints.RemoveAt(currentFarthestPointIndex);
             }
         }
 
-        for (int x = 0; x < startAreaWidth; x++)
+        return finalPoints;
+    }
+
+    private void GrowAsteroid(Vector3 location, World world)
+    {
+        currentAsteroid = new HashSet<Tile>();
+        GrowAsteroid(world.GetTileAt((int)location.x, (int)location.y, (int)location.z));
+        foreach (Tile tile in currentAsteroid)
         {
-            for (int y = 0; y < startAreaHeight; y++)
+            PlaceAsteroidChunk(tile, world);
+        }
+    }
+
+    private void GrowAsteroid(Tile tile, float depth = 0)
+    {
+        // This generates a range of sizes around the set size, a larger degre of variance leads to less consistent looking asteroids
+        int minSize = asteroidInfo.AsteroidSize - 5;
+        int maxSize = asteroidInfo.AsteroidSize + 5;
+        if (tile != null)
+        {
+            currentAsteroid.Add(tile);
+            foreach (Tile neighbor in tile.GetNeighbours(false, true))
             {
-                int worldX = (width / 2) - startAreaCenterX + x;
-                int worldY = (height / 2) + startAreaCenterY - y;
-
-                Tile tile = world.GetTileAt(worldX, worldY, 0);
-
-                if (startAreaFurnitures[x, y] != null && startAreaFurnitures[x, y] != string.Empty)
+                if (depth < maxSize && !currentAsteroid.Contains(neighbor) && neighbor.Furniture == null && Random.value < (float)minSize / depth)
                 {
-                    world.FurnitureManager.PlaceFurniture(startAreaFurnitures[x, y], tile, true);
+                    GrowAsteroid(neighbor, depth + 1);
                 }
             }
         }
+    }
 
-        for (int z = 0; z < depth; z++)
+    private void PlaceAsteroidChunk(Tile tile, World world)
+    {
+        if (tile.Type != TileType.Empty)
         {
-            float scaleZ = Mathf.Lerp(1f, .5f, Mathf.Abs((depth / 2f) - z) / depth);
-            for (int x = 0; x < width; x++)
+            return;
+        }
+
+        const int NeededNeighbors = 3;
+
+        if (tile.GetNeighbours(true, true).Count(currentAsteroid.Contains) >= NeededNeighbors)
+        {
+            tile.SetTileType(asteroidFloorType);
+
+            world.FurnitureManager.PlaceFurniture("astro_wall", tile, false);
+
+            if (Random.value <= asteroidInfo.ResourceChance && tile.Furniture.Type == "astro_wall")
             {
-                for (int y = 0; y < height; y++)
+                if (asteroidInfo.Resources.Count > 0)
                 {
-                    float noiseValue = Mathf.PerlinNoise((x + offsetX) / (width * asteroidNoiseScale * scaleZ), (y + offsetY) / (height * asteroidNoiseScale * scaleZ));
-                    if (noiseValue >= asteroidNoiseThreshhold && !IsStartArea(x, y, world))
+                    int currentweight = 0;
+                    int randomweight = Random.Range(0, sumOfAllWeightedChances);
+
+                    for (int i = 0; i < asteroidInfo.Resources.Count; i++)
                     {
-                        Tile tile = world.GetTileAt(x, y, z);
+                        Resource inv = asteroidInfo.Resources[i];
 
-                        if (tile.X < minEdgeDistance || tile.Y < minEdgeDistance ||
-                              World.Current.Width - tile.X <= minEdgeDistance ||
-                              World.Current.Height - tile.Y <= minEdgeDistance)
+                        int weight = inv.WeightedChance; 
+                        currentweight += weight;
+
+                        if (randomweight <= currentweight)
                         {
-                            continue;
-                        }
+                            tile.Furniture.Parameters["ore_type"].SetValue(inv.Type);
+                            tile.Furniture.Parameters["source_type"].SetValue(inv.Source);
 
-                        tile.Type = AsteroidFloorType;
-
-                        world.FurnitureManager.PlaceFurniture("astro_wall", tile, false);
-
-                        if (Random.value <= asteroidResourceChance && tile.Furniture.Name == "Rock Wall")
-                        {
-                            if (resources.Length > 0)
-                            {
-                                int currentweight = 0;
-                                int randomweight = Random.Range(0, sumOfAllWeightedChances);
-
-                                for (int i = 0; i < resources.Length; i++)
-                                {
-                                    Inventory inv = resources[i];
-
-                                    int weight = inv.StackSize; // In stacksize the weight was cached
-                                    currentweight += weight;
-
-                                    if (randomweight <= currentweight)
-                                    {
-                                        tile.Furniture.Deconstruct();
-
-                                        Furniture oreWall = PrototypeManager.Furniture.Get("astro_wall").Clone();
-                                        oreWall.Parameters["ore_type"].SetValue(inv.Type.ToString());
-
-                                        switch (inv.Type)
-                                        {
-                                            case "Raw Iron":
-                                                oreWall.Tint = new Color32(72, 209, 204, 255);
-                                                break;
-                                            case "Uranium":
-                                                oreWall.Tint = new Color32(48, 128, 20, 255);
-                                                break;
-                                            case "Ice":
-                                                oreWall.Tint = new Color32(202, 225, 255, 255);
-                                                break;
-                                            default:
-                                                oreWall.Tint = Color.gray;
-                                                break;
-                                        }
-
-                                        world.FurnitureManager.PlaceFurniture(oreWall, tile, false);
-                                        break;
-                                    }
-                                }
-                            }
+                            break;
                         }
                     }
                 }
             }
         }
     }
-    
-    public static bool IsStartArea(int x, int y, World world)
-    {
-        int boundX = (world.Width / 2) - startAreaCenterX;
-        int boundY = (world.Height / 2) + startAreaCenterY;
 
-        if (x >= boundX && x < (boundX + startAreaWidth) && y >= (boundY - startAreaHeight) && y < boundY)
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    public static void ReadXML()
+    private void ReadXML(World world)
     {
         // Setup XML Reader
-        string filePath = System.IO.Path.Combine(Application.streamingAssetsPath, "Data");
-        filePath = System.IO.Path.Combine(filePath, "WorldGenerator.xml");
+        // Optimally, this would use GameController.Instance.GeneratorBasePath(), but that apparently may not exist at this point.
+        // TODO: Investigate either a way to ensure GameController exists at this time or another place to reliably store the base path, that is accessible
+        // both in _World and MainMenu scenes
+        string filePath = System.IO.Path.Combine(System.IO.Path.Combine(Application.streamingAssetsPath, "WorldGen"), SceneController.GeneratorFile);
         string furnitureXmlText = System.IO.File.ReadAllText(filePath);
 
         XmlTextReader reader = new XmlTextReader(new StringReader(furnitureXmlText));
@@ -183,169 +231,97 @@ public class WorldGenerator
                 catch (System.Exception e)
                 {
                     // Leaving this in because UberLogger doesn't handle multiline messages  
-                    Debug.LogError("Error reading WorldGenerator/Asteroid" + System.Environment.NewLine + "Exception: " + e.Message + System.Environment.NewLine + "StackTrace: " + e.StackTrace);
+                    UnityDebugger.Debugger.LogError("WorldGenerator", "Error reading WorldGenerator/Asteroid" + System.Environment.NewLine + "Exception: " + e.Message + System.Environment.NewLine + "StackTrace: " + e.StackTrace);
                 }
             }
             else
             {
-                Debug.ULogErrorChannel("WorldGenerator", "Did not find a 'Asteroid' element in the WorldGenerator definition file.");
+                UnityDebugger.Debugger.LogError("WorldGenerator", "Did not find a 'Asteroid' element in the WorldGenerator definition file.");
             }
 
             if (reader.ReadToNextSibling("StartArea"))
             {
                 try
                 {
-                    ReadXmlStartArea(reader);
+                    string startAreaFileName = reader.GetAttribute("file");
+                    string startAreaFilePath = Path.Combine(Application.streamingAssetsPath, Path.Combine("WorldGen", startAreaFileName));
+                    ReadStartArea(startAreaFilePath, world);
                 }
                 catch (System.Exception e)
                 {
-                    Debug.LogError("Error reading WorldGenerator/StartArea" + System.Environment.NewLine + "Exception: " + e.Message + System.Environment.NewLine + "StackTrace: " + e.StackTrace);
+                    UnityDebugger.Debugger.LogError("WorldGenerator", "Error reading WorldGenerator/StartArea" + System.Environment.NewLine + "Exception: " + e.Message + System.Environment.NewLine + "StackTrace: " + e.StackTrace);
                 }
             }
             else
             {
-                Debug.ULogErrorChannel("WorldGenerator", "Did not find a 'StartArea' element in the WorldGenerator definition file.");
+                UnityDebugger.Debugger.LogError("WorldGenerator", "Did not find a 'StartArea' element in the WorldGenerator definition file.");
             }
 
             if (reader.ReadToNextSibling("Wallet"))
             {
                 try
                 {
-                    ReadXmlWallet(reader);
+                    ReadXmlWallet(reader, world);
                 }
                 catch (System.Exception e)
                 {
-                    Debug.LogError("Error reading WorldGenerator/Wallet" + System.Environment.NewLine + "Exception: " + e.Message + System.Environment.NewLine + "StackTrace: " + e.StackTrace);
+                    UnityDebugger.Debugger.LogError("WorldGenerator", "Error reading WorldGenerator/Wallet" + System.Environment.NewLine + "Exception: " + e.Message + System.Environment.NewLine + "StackTrace: " + e.StackTrace);
                 }
             }
             else
             {
-                Debug.ULogErrorChannel("WorldGenerator", "Did not find a 'Wallet' element in the WorldGenerator definition file.");
+                UnityDebugger.Debugger.LogError("WorldGenerator", "Did not find a 'Wallet' element in the WorldGenerator definition file.");
             }
         }
         else
         {
-            Debug.ULogErrorChannel("WorldGenerator", "Did not find a 'WorldGenerator' element in the WorldGenerator definition file.");
+            UnityDebugger.Debugger.LogError("WorldGenerator", "Did not find a 'WorldGenerator' element in the WorldGenerator definition file.");
         }
     }
 
-    private static void ReadXmlAsteroid(XmlReader reader)
+    private void ReadXmlAsteroid(XmlReader reader)
     {
-        XmlReader asteroid = reader.ReadSubtree();
-
-        while (asteroid.Read())
-        {
-            switch (asteroid.Name)
-            {
-                case "NoiseScale":
-                    reader.Read();
-                    asteroidNoiseScale = asteroid.ReadContentAsFloat();
-                    break;
-                case "NoiseThreshhold":
-                    reader.Read();
-                    asteroidNoiseThreshhold = asteroid.ReadContentAsFloat();
-                    break;
-                case "ResourceChance":
-                    reader.Read();
-                    asteroidResourceChance = asteroid.ReadContentAsFloat();
-                    break;
-                case "Resources":
-                    XmlReader res_reader = reader.ReadSubtree();
-
-                    List<Inventory> res = new List<Inventory>();
-                    List<int> resMin = new List<int>();
-                    List<int> resMax = new List<int>();
-
-                    while (res_reader.Read())
-                    {
-                        if (res_reader.Name == "Resource")
-                        {
-                            res.Add(new Inventory(
-                                res_reader.GetAttribute("type"),
-                                Mathf.CeilToInt(float.Parse(res_reader.GetAttribute("weightedChance"))),
-                                int.Parse(res_reader.GetAttribute("maxStack"))));
-
-                            resMin.Add(int.Parse(res_reader.GetAttribute("min")));
-                            resMax.Add(int.Parse(res_reader.GetAttribute("max")));
-                        }
-                    }
-
-                    resources = res.ToArray();
-                    resourceMin = resMin.ToArray();
-                    resourceMax = resMax.ToArray();
-
-                    break;
-            }
-        }
+        XmlSerializer serializer = new XmlSerializer(typeof(AsteroidInfo));
+        asteroidInfo = (AsteroidInfo)serializer.Deserialize(reader);
     }
 
-    private static void ReadXmlStartArea(XmlReader reader)
+    private void ReadStartArea(string startAreaFilePath, World world)
     {
-        startAreaWidth = int.Parse(reader.GetAttribute("width"));
-        startAreaHeight = int.Parse(reader.GetAttribute("height"));
-        startAreaCenterX = int.Parse(reader.GetAttribute("centerX"));
-        startAreaCenterY = int.Parse(reader.GetAttribute("centerY"));
-
-        startAreaTiles = new int[startAreaWidth, startAreaHeight];
-
-        XmlReader startArea = reader.ReadSubtree();
-
-        while (startArea.Read())
-        {
-            switch (startArea.Name)
-            {
-                case "Tiles":
-                    reader.Read();
-                    string tilesString = startArea.ReadContentAsString();
-                    string[] splittedString = tilesString.Split(","[0]);
-
-                    if (splittedString.Length < startAreaWidth * startAreaHeight)
-                    {
-                        Debug.ULogErrorChannel("WorldGenerator", "Error reading 'Tiles' array to short: " + splittedString.Length + " !");
-                        break;
-                    }
-
-                    for (int x = 0; x < startAreaWidth; x++)
-                    {
-                        for (int y = 0; y < startAreaHeight; y++)
-                        {
-                            startAreaTiles[x, y] = int.Parse(splittedString[x + (y * startAreaWidth)]);
-                        }
-                    }
-
-                    break; 
-                case "Furnitures":
-                    XmlReader furnReader = reader.ReadSubtree();
-
-                    startAreaFurnitures = new string[startAreaWidth, startAreaHeight];
-
-                    while (furnReader.Read())
-                    {
-                        if (furnReader.Name == "Furniture")
-                        {
-                            int x = int.Parse(furnReader.GetAttribute("x"));
-                            int y = int.Parse(furnReader.GetAttribute("y"));
-                            startAreaFurnitures[x, y] = furnReader.GetAttribute("name");
-                        }
-                    }
-
-                    break;
-            }
-        }
+        world.ReadJson(startAreaFilePath);
     }
 
-    private static void ReadXmlWallet(XmlReader reader)
+    [System.Serializable]
+    [XmlRoot("Asteroid")]
+    public class AsteroidInfo
     {
-        XmlReader wallet = reader.ReadSubtree();
+        [XmlElement("AsteroidSize")]
+        public int AsteroidSize { get; set; }
 
-        while (wallet.Read())
-        {
-            if (wallet.Name == "Currency")
-            {
-                World.Current.Wallet.AddCurrency(
-                    wallet.GetAttribute("name"),
-                    float.Parse(wallet.GetAttribute("startingBalance")));
-            }
-        }
+        [XmlElement("AsteroidDensity")]
+        public float AsteroidDensity { get; set; }
+
+        [XmlElement("ResourceChance")]
+        public float ResourceChance { get; set; }
+
+        public List<Resource> Resources { get; set; }
+    }
+
+    [System.Serializable]
+    public class Resource
+    {
+        [XmlAttribute("type")]
+        public string Type { get; set; }
+
+        [XmlAttribute("source")]
+        public string Source { get; set; }
+
+        [XmlAttribute("min")]
+        public int Min { get; set; }
+
+        [XmlAttribute("max")]
+        public int Max { get; set; }
+
+        [XmlAttribute("weightedChance")]
+        public int WeightedChance { get; set; }
     }
 }
